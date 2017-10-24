@@ -1,11 +1,11 @@
 function [phi_tot, kin_tot, e_tot] = conserve(rij, v)
 % calculating the conserved quantities
 
-global epsilon sigma m rc2 pot_choice
+global epsilon sigma m rc2 pot_choice phi_lj_rc2
 
 % final shortest distances between the particles
 rij_fin = sqrt(rij(:,:,1).^2 + rij(:,:,2).^2);
-ind = (rij_fin >= rc2);                                                      % indices for rij_fin > rc2
+ind = (rij_fin > rc2);                                                      % indices for rij_fin > rc2
 
 % calculating the total potential
 if (pot_choice ==0)
@@ -15,8 +15,8 @@ if (pot_choice ==0)
     
 elseif (pot_choice == 1)
     
-    %% lennard jones fluid
-    phi_rij = 4*epsilon*( (rij_fin/sigma).^(-12) - (rij_fin/sigma).^(-6));  
+    %% lennard jones fluid with shifted Lennard-Jones potential
+    phi_rij = 4*epsilon*( (rij_fin/sigma).^(-12) - (rij_fin/sigma).^(-6)) - phi_lj_rc2;  
     phi_rij(isnan(phi_rij))=0;                                       % set values above threshold to 0
     
 end
