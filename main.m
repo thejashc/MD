@@ -92,10 +92,11 @@ for t=1:trial
         indpy = find( r(:,2) > box/2 );
         indny = find( r(:,2) < -box/2 );
         n(indpx,1) = n(indpx,1) + 1;
-        n(indnx,1) = n(indnx,1) + 1;
+        n(indnx,1) = n(indnx,1) - 1;
         n(indpy,2) = n(indpy,2) + 1;
-        n(indny,2) = n(indny,2) + 1;
+        n(indny,2) = n(indny,2) - 1;
         
+        %% checks
         %if ( ~isempty(indpx) || ~isempty(indnx) || ~isempty(indpy) || ~isempty(indny))
         %    flag = 1;
         %end
@@ -104,6 +105,7 @@ for t=1:trial
             flag = 1;
         end
         
+        %% periodic bc's
         r = mod(r+ box/2, box) - box/2;
         rij = rij_calc(r, rij);
         
@@ -116,8 +118,8 @@ for t=1:trial
         T(step) = 2*kin_tot(step)/(dof*kB);
         
         % % pressure
-        %         rF = rij(:,:,1).*fij(:,:,1) + rij(:,:,2).*fij(:,:,2);
-        %         P(step) = (1/box^2)*( N*kB*T(step) +  (0.5/d)*sum(sum(rF,2),1));
+        rF = rij(:,:,1).*fij(:,:,1) + rij(:,:,2).*fij(:,:,2);
+        P(step) = (1/box^2)*( N*kB*T(step) +  (0.5/d)*sum(sum(rF,2),1));
         
         %% velocity and g(r) calculation
         if ((step > 2e4) && (mod(step, 100) == 0) )
