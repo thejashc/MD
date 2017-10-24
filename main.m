@@ -1,11 +1,11 @@
 clearvars;
 clc;
 
-global N epsilon sigma box steps dt m rc2 kB d pot_choice
+global N epsilon sigma box steps dt m rc2 kB d pot_choice r_old phi_lj_rc2
 
 box = 10;
 N = box*box;
-steps = 5e5;
+steps = 1e5;
 dt = 1e-4;
 m = 1;
 kB = 1;
@@ -28,7 +28,9 @@ elseif (pot_choice ==1)
     %% Lennard Jones
     epsilon = 1.0;
     sigma = 1.0;
-    rc2 = 3.0;
+    rc2 = 2.5;
+    
+    phi_lj_rc2 = 4*epsilon*( (sigma/rc2)^12 - (sigma/rc2)^6 );
 end
 
 
@@ -57,6 +59,7 @@ for t=1:trial
     msd_count =0;
     k=0;
     vdist = [];
+    rdist = [];
     
     % calculating rij matrix
     rij = rij_calc(r, rij);
@@ -71,10 +74,17 @@ for t=1:trial
         if (step == 1)
             w = rand(N,2);
             w = w - mean(w);
+            
+            % v = importdata('vel_start_up.dat');
+            v = rand(N,2);
+            v = v - mean(v);
+            r_old = r - v*dt;
         end
         
         %% equation of motion integrator
-        [r, w, v] = integrator(r, w, fij_tot);
+        [r, w, v] = integrator_verlet_lf(r, w, fij_tot);
+        % [r, v] = integrator_verlet(r, fij_tot);
+        % [r, v] = integrator_euler(r, v, fij_tot);
         
         % updating the n vector and calculating rij matrix
         indpx = find( r(:,1) > box/2 );
@@ -82,9 +92,17 @@ for t=1:trial
         indpy = find( r(:,2) > box/2 );
         indny = find( r(:,2) < -box/2 );
         n(indpx,1) = n(indpx,1) + 1;
-        n(indnx,1) = n(indnx,1) - 1;
+        n(indnx,1) = n(indnx,1) + 1;
         n(indpy,2) = n(indpy,2) + 1;
-        n(indny,2) = n(indny,2) - 1;
+        n(indny,2) = n(indny,2) + 1;
+        
+        %if ( ~isempty(indpx) || ~isempty(indnx) || ~isempty(indpy) || ~isempty(indny))
+        %    flag = 1;
+        %end
+        mom = mean(v);
+        if (mom(1) > 1 || mom(2) > 1 || step==17170)
+            flag = 1;
+        end
         
         r = mod(r+ box/2, box) - box/2;
         rij = rij_calc(r, rij);
@@ -94,16 +112,18 @@ for t=1:trial
         
         %% measuring pressure and temperature
         % temperature
-        T(step) = 2*kin_tot(step)/((d*N-3)*kB);
+        dof = d*(N-1) - 1;
+        T(step) = 2*kin_tot(step)/(dof*kB);
         
-        % pressure
-        rF = rij(:,:,1).*fij(:,:,1) + rij(:,:,2).*fij(:,:,2);
-        P(step) = (1/box^2)*( N*kB*T(step) +  (0.5/d)*sum(sum(rF,2),1));
+        % % pressure
+        %         rF = rij(:,:,1).*fij(:,:,1) + rij(:,:,2).*fij(:,:,2);
+        %         P(step) = (1/box^2)*( N*kB*T(step) +  (0.5/d)*sum(sum(rF,2),1));
         
         %% velocity and g(r) calculation
-        if ((step > 1e5) && (mod(step, 100) == 0) )
+        if ((step > 2e4) && (mod(step, 100) == 0) )
             % velocity distribution
             vdist = [vdist; v];
+            rdist = [rdist; r];
             
             % g(r) calculation
             % final shortest distances between the particles
@@ -137,8 +157,8 @@ for t=1:trial
         end
         
         %visualization
-        %         visualize(r);
-        %         pause(0.01)
+        % visualize(r);
+        % pause(0.01)
     end
     % verifying against ideal-gas law
     P_mean = mean(P(end-3000:end));
@@ -153,7 +173,7 @@ for t=1:trial
     semilogx(1:steps, kin_tot,'.-')
     semilogx(1:steps, e_tot,'.-')
     
-    %% Velocity distribution
+    %     %% Velocity distribution
     [y,x] = hist(vdist(:,1),50);
     y = y/trapz(x,y);
     figure(2);
@@ -162,6 +182,7 @@ for t=1:trial
     gauss = (1/sqrt(2*pi*kB*T_mean))*exp(-s.^2 / (2*kB*T_mean));
     hold on;
     plot(s, gauss, 'r-')
+    
     
     %% plotting g(r)
     figure(3);
