@@ -1,7 +1,7 @@
 clearvars;
 clc;
 
-global N epsilon sigma box steps dt m rc2 kB d pot_choice r_old phi_lj_rc2
+global N epsilon sigma box steps dt m rc2 kB d pot_choice r_old phi_lj_rc2 eta T_set Q dof
 
 box = 10;
 N = box*box;
@@ -15,6 +15,14 @@ trial = 1;
 MSD_lim = 5e4;
 rad = 0.5:0.25:10;
 pot_choice = 1;
+
+% thermostat parameters
+eta = 0.1;                      % friction parameter
+T_set = 1.0;                    % desired temperature
+dof = 2*(N-1)-1;                % degrees of freedom: 2 for momenta in x and y, 1 for energy conservation
+tau = 0.05;                      % relaxation time
+Q = dof*kB*T_set*tau^2;         % thermal inertia
+fr_coeff = zeros(steps,1);      % eta as a function of time
 
 % choice of potential
 if (pot_choice==0)
@@ -82,9 +90,11 @@ for t=1:trial
         end
         
         %% equation of motion integrator
-        [r, w, v] = integrator_verlet_lf(r, w, fij_tot);
-        % [r, v] = integrator_verlet(r, fij_tot);
-        % [r, v] = integrator_euler(r, v, fij_tot);
+        %         [r, w, v] = integrator_verlet_lf(r, w, fij_tot);
+        %         [r, v] = integrator_verlet(r, fij_tot);
+        %         [r, v] = integrator_euler(r, v, fij_tot);
+        [r, w, v] = integrator_NoseHoover(r, w, fij_tot);
+        fr_coeff(step) = eta;
         
         % updating the n vector and calculating rij matrix
         indpx = find( r(:,1) > box/2 );
@@ -101,7 +111,7 @@ for t=1:trial
         %    flag = 1;
         %end
         mom = mean(v);
-        if (mom(1) > 1 || mom(2) > 1 || step==17170)
+        if (mom(1) > 1e-3 || mom(2) > 1e-3)
             flag = 1;
         end
         
@@ -114,12 +124,11 @@ for t=1:trial
         
         %% measuring pressure and temperature
         % temperature
-        dof = d*(N-1) - 1;
         T(step) = 2*kin_tot(step)/(dof*kB);
         
-        % % pressure
-        rF = rij(:,:,1).*fij(:,:,1) + rij(:,:,2).*fij(:,:,2);
-        P(step) = (1/box^2)*( N*kB*T(step) +  (0.5/d)*sum(sum(rF,2),1));
+        %         % pressure
+        %         rF = rij(:,:,1).*fij(:,:,1) + rij(:,:,2).*fij(:,:,2);
+        %         P(step) = (1/box^2)*( N*kB*T(step) +  (0.5/d)*sum(sum(rF,2),1));
         
         %% velocity and g(r) calculation
         if ((step > 2e4) && (mod(step, 100) == 0) )
@@ -127,40 +136,40 @@ for t=1:trial
             vdist = [vdist; v];
             rdist = [rdist; r];
             
-            % g(r) calculation
-            % final shortest distances between the particles
-            rij_fin = sqrt(rij(:,:,1).^2 + rij(:,:,2).^2);
+            %             % g(r) calculation
+            %             % final shortest distances between the particles
+            %             rij_fin = sqrt(rij(:,:,1).^2 + rij(:,:,2).^2);
             
-            for i=1:N
-                for j=1:length(rad)
-                    N_count(j) = N_count(j) + length( find( rij_fin(:,i) > rad(j) & rij_fin(:,i) < rad(j)+dr) );
-                end
-                
-                % count variable
-                count = count + 1;
-            end
+            %             for i=1:N
+            %                 for j=1:length(rad)
+            %                     N_count(j) = N_count(j) + length( find( rij_fin(:,i) > rad(j) & rij_fin(:,i) < rad(j)+dr) );
+            %                 end
+            %
+            %                 % count variable
+            %                 count = count + 1;
+            %             end
             
         end
         
-        %% MSD calculation
-        if( mod(step,MSD_lim) == 0 )
-            rinit = r+n*box;
-            k= 1;
-            
-            % msd_count
-            msd_count = msd_count + 1;
-        end
-        
-        if ( (step > MSD_lim) && mod(step - k, MSD_lim) == 0 && (k <= MSD_lim) )
-            MSD(k) =  MSD(k) + sum(sum(((r+ n*box) - rinit ).^2));
-            
-            % update k
-            k = k+1;
-        end
+        %         %% MSD calculation
+        %         if( mod(step,MSD_lim) == 0 )
+        %             rinit = r+n*box;
+        %             k= 1;
+        %
+        %             % msd_count
+        %             msd_count = msd_count + 1;
+        %         end
+        %
+        %         if ( (step > MSD_lim) && mod(step - k, MSD_lim) == 0 && (k <= MSD_lim) )
+        %             MSD(k) =  MSD(k) + sum(sum(((r+ n*box) - rinit ).^2));
+        %
+        %             % update k
+        %             k = k+1;
+        %         end
         
         %visualization
-        % visualize(r);
-        % pause(0.01)
+        visualize(r);
+        pause(1e-7)
     end
     % verifying against ideal-gas law
     P_mean = mean(P(end-3000:end));
@@ -175,33 +184,33 @@ for t=1:trial
     semilogx(1:steps, kin_tot,'.-')
     semilogx(1:steps, e_tot,'.-')
     
-    %     %% Velocity distribution
+    %% Velocity distribution
     [y,x] = hist(vdist(:,1),50);
     y = y/trapz(x,y);
     figure(2);
     plot(x, y, 'b-o')
     s = -60:1e-3:60;
-    gauss = (1/sqrt(2*pi*kB*T_mean))*exp(-s.^2 / (2*kB*T_mean));
+    gauss = (1/sqrt(2*pi*kB*T_set))*exp(-s.^2 / (2*kB*T_set));
     hold on;
     plot(s, gauss, 'r-')
     
     
-    %% plotting g(r)
-    figure(3);
-    rho_homo = N/(box^2);
-    g = N_count./(rho_homo*2*pi*rad'*dr*count);
+    %     %% plotting g(r)
+    %     figure(3);
+    %     rho_homo = N/(box^2);
+    %     g = N_count./(rho_homo*2*pi*rad'*dr*count);
+    %
+    %     plot(rad, g, 'k-')
     
-    plot(rad, g, 'k-')
-    
-    %% plotting the MSD
-    figure(4);
-    MSD_t = 1:MSD_lim;
-    MSD_y = MSD/(N*(msd_count-1));
-    
-    xfit= log(MSD_t(end-50:end-1));
-    yfit = log(sqrt(MSD_y(end-50:end-1)));
-    
-    plot(xfit, yfit, 'r^-')
+    %     %% plotting the MSD
+    %     figure(4);
+    %     MSD_t = 1:MSD_lim;
+    %     MSD_y = MSD/(N*(msd_count-1));
+    %
+    %     xfit= log(MSD_t(end-50:end-1));
+    %     yfit = log(sqrt(MSD_y(end-50:end-1)));
+    %
+    %     plot(xfit, yfit, 'r^-')
     
     t
 end
